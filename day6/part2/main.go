@@ -28,7 +28,10 @@ func main() {
 	mapState := createMap(rows)
 
 	// Get the pathset of the guard
-	combos := testGuardPathset(mapState)
+	pathset := getGuardPathset(mapState)
+
+	// Get the looping wall test count
+	combos := testGuardPathset(mapState, pathset)
 
 	// We're done!
 	fmt.Println(combos)
@@ -122,40 +125,48 @@ func setRuneAt(state MapState, pos [2]int, character rune) (oldChar rune) {
 	return oldChar
 }
 
-func testGuardPathset(state MapState) int {
-	total := 0
-	ogGuard := state.guard
-	set := make(map[[2]int]bool)
-	set[ogGuard] = true
+func getGuardPathset(state MapState) map[[2]int]bool {
+	// Create a set of all the guard's path points
+	pathset := make(map[[2]int]bool)
 
-	// Set nextPos to the top of guard's current position
-	nextPos, oob := [2]int{state.guard[0] - 1, state.guard[1]}, false
+	nextPos, oob := state.guard, false
 	for !oob {
-
-		if nextPos != state.guard {
-			if state.grid[nextPos[0]][nextPos[1]] != '#' && nextPos != ogGuard && !set[nextPos] {
-				set[nextPos] = true
-				newMapState := *state.Clone()
-				newMapState.guard = ogGuard
-				newMapState.direction = 0
-				setRuneAt(newMapState, nextPos, '#')
-
-				fmt.Println("Creating new map with wall at: ", nextPos)
-
-				if !doesGuardEscape(newMapState) {
-					// printMap(newMapState)
-					total++
-				}
-			}
-
-			state.guard = nextPos
-			fmt.Println("Moved guard next: ", nextPos)
-		} else {
-			state.direction = (state.direction + 1) % 4
-		}
-
-		// Get the next position of the guard, if it's not the same, we place a wall there
+		pathset[nextPos] = true
 		nextPos, oob = getNextGuardPosition(&state)
+
+		// If we hit a wall, we'll have the same nextPos so we change the direction
+		if nextPos == state.guard {
+			state.direction = (state.direction + 1) % 4
+		} else {
+			state.guard = nextPos
+		}
+	}
+
+	return pathset
+}
+
+func testGuardPathset(state MapState, pathset map[[2]int]bool) int {
+	total := 0
+	startingGuard := state.guard
+
+	// We're gonna add walls at each point the guard takes, except his starting point
+	delete(pathset, startingGuard)
+
+	for wallPos := range pathset {
+		// Create a clone map state
+		testState := *state.Clone()
+
+		// Set the guard to the starting position
+		testState.guard = startingGuard
+		testState.direction = 0
+
+		// Create a wall at the wall position
+		setRuneAt(testState, wallPos, '#')
+
+		// Check if guard escapes this new map, if they don't, add the total
+		if !doesGuardEscape(testState) {
+			total++
+		}
 	}
 
 	return total
@@ -168,17 +179,11 @@ func doesGuardEscape(state MapState) bool {
 	tracker := [3]int{state.guard[0], state.guard[1], state.direction} // Tracks direction as well
 	pathset[tracker] = true                                            // Mark guard's current position
 
-	// fmt.Println("Tracker OG: ", tracker)
-	// fmt.Println("Pathset OG: ", pathset)
-
 	oob := false
 	for !oob {
 		var nextPos [2]int
 		nextPos, oob = getNextGuardPosition(&state)
 		tracker = [3]int{nextPos[0], nextPos[1], state.direction}
-
-		// fmt.Println("Tracker: ", tracker)
-		// fmt.Println("Pathset: ", pathset)
 
 		// If we've already seen the next position before, we're in a loop
 		if nextPos == state.guard {
@@ -193,19 +198,6 @@ func doesGuardEscape(state MapState) bool {
 	}
 
 	return true
-}
-
-func printMap(state MapState) {
-	for i, row := range state.grid {
-		for j, char := range row {
-			if state.guard[0] == i && state.guard[1] == j {
-				fmt.Print("^")
-			} else {
-				fmt.Print(string(char))
-			}
-		}
-		fmt.Println()
-	}
 }
 
 func check(e error) {
